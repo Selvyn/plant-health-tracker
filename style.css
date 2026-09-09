@@ -122,6 +122,11 @@ body {
   color: var(--text-secondary);
 }
 
+.field-list .field-summary {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .empty-hint {
   text-align: center;
   color: var(--muted);
@@ -269,6 +274,10 @@ body {
   align-items: center;
 }
 
+#sheet-score {
+  background: rgba(11, 11, 11, 0.04);
+}
+
 .modal,
 .popover {
   background: var(--surface-1);
@@ -329,6 +338,15 @@ body {
   margin-top: 6px;
 }
 
+#btn-prev-plant {
+  margin-right: auto;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .btn-primary,
 .btn-secondary {
   min-height: 44px;
@@ -341,12 +359,12 @@ body {
 }
 
 .btn-primary {
-  background: var(--score-3);
+  background: var(--text-primary);
   color: #fff;
 }
 
 .btn-primary:active {
-  background: var(--score-4);
+  background: var(--text-secondary);
 }
 
 .btn-secondary {
@@ -386,7 +404,9 @@ body {
 }
 
 .sheet {
-  background: var(--surface-1);
+  background: rgba(252, 252, 251, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   width: 100%;
   max-width: 480px;
   border-radius: 16px 16px 0 0;
@@ -434,6 +454,28 @@ body {
   color: var(--muted);
   font-size: 13px;
   margin: 0 0 14px;
+}
+
+.stage-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.stage-btn {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--baseline);
+  background: var(--surface-1);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.stage-btn.active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: #fff;
 }
 
 .score-buttons {

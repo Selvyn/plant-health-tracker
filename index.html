@@ -61,6 +61,8 @@
       <span class="legend-item"><i class="swatch" style="background:var(--score-5)"></i>5</span>
       <span class="legend-item"><i class="swatch" style="background:var(--unscored)"></i>No score</span>
       <span class="legend-item"><i class="swatch swatch-empty"></i>No plant</span>
+      <span class="legend-item">🌱 Budding</span>
+      <span class="legend-item">🌼 Flowering</span>
     </div>
   </section>
 
@@ -114,6 +116,13 @@
       </button>
     </div>
     <p id="score-prev-week" class="muted"></p>
+    <label>Notes
+      <textarea id="score-note" rows="3" placeholder="Optional notes..."></textarea>
+    </label>
+    <div class="stage-toggle" id="stage-toggle">
+      <button type="button" class="stage-btn" data-stage="budding">🌱 Budding</button>
+      <button type="button" class="stage-btn" data-stage="flowering">🌼 Flowering</button>
+    </div>
     <div class="score-buttons" id="score-buttons">
       <button type="button" data-score="1" style="--c:var(--score-1)">1</button>
       <button type="button" data-score="2" style="--c:var(--score-2)">2</button>
@@ -121,10 +130,8 @@
       <button type="button" data-score="4" style="--c:var(--score-4)">4</button>
       <button type="button" data-score="5" style="--c:var(--score-5)">5</button>
     </div>
-    <label>Notes
-      <textarea id="score-note" rows="3" placeholder="Optional notes..."></textarea>
-    </label>
     <div class="modal-actions">
+      <button type="button" id="btn-prev-plant" class="btn-secondary" disabled>‹ Previous</button>
       <button type="button" id="btn-clear-score" class="btn-secondary hidden">Clear</button>
       <button type="button" id="btn-cancel-score" class="btn-secondary">Cancel</button>
     </div>

@@ -34,7 +34,7 @@ function addWeeks(weekId, n) {
 /* ---------- IndexedDB layer ---------- */
 
 const DB_NAME = 'plant-health-tracker';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise = null;
 
 function openDB() {
@@ -43,17 +43,30 @@ function openDB() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
+      const tx = e.target.transaction;
+
       if (!db.objectStoreNames.contains('fields')) {
         db.createObjectStore('fields', { keyPath: 'id' });
       }
+
+      let plants;
       if (!db.objectStoreNames.contains('plants')) {
-        const s = db.createObjectStore('plants', { keyPath: 'id' });
-        s.createIndex('byField', 'fieldId');
+        plants = db.createObjectStore('plants', { keyPath: 'id' });
+        plants.createIndex('byField', 'fieldId');
+      } else {
+        plants = tx.objectStore('plants');
       }
+
+      let scores;
       if (!db.objectStoreNames.contains('scores')) {
-        const s = db.createObjectStore('scores', { keyPath: 'id' });
-        s.createIndex('byPlant', 'plantId');
-        s.createIndex('byFieldWeek', ['fieldId', 'weekId']);
+        scores = db.createObjectStore('scores', { keyPath: 'id' });
+        scores.createIndex('byPlant', 'plantId');
+        scores.createIndex('byFieldWeek', ['fieldId', 'weekId']);
+      } else {
+        scores = tx.objectStore('scores');
+      }
+      if (!scores.indexNames.contains('byField')) {
+        scores.createIndex('byField', 'fieldId');
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -191,6 +204,23 @@ function showScreen(name) {
 
 /* ---------- fields list ---------- */
 
+function shortDateFor(weekId) {
+  const d = new Date(weekId + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function summarizeFieldScores(scores) {
+  if (!scores.length) return null;
+  let latestWeekId = scores[0].weekId;
+  for (const s of scores) if (s.weekId > latestWeekId) latestWeekId = s.weekId;
+  const latest = scores.filter((s) => s.weekId === latestWeekId);
+  const scored = latest.filter((s) => s.score);
+  const avg = scored.length ? scored.reduce((sum, s) => sum + s.score, 0) / scored.length : null;
+  const buddingCount = latest.filter((s) => stageOf(s) === 'budding').length;
+  const floweringCount = latest.filter((s) => stageOf(s) === 'flowering').length;
+  return { latestWeekId, avg, scoredCount: scored.length, buddingCount, floweringCount };
+}
+
 async function renderFieldList() {
   const fields = await idbGetAll('fields');
   fields.sort((a, b) => b.createdAt - a.createdAt);
@@ -199,9 +229,22 @@ async function renderFieldList() {
   for (const f of fields) {
     const li = document.createElement('li');
     const plants = await idbGetAllByIndex('plants', 'byField', f.id);
-    li.innerHTML = `<span class="field-name"></span><span class="field-meta"></span>`;
+    const scores = await idbGetAllByIndex('scores', 'byField', f.id);
+    const summary = summarizeFieldScores(scores);
+
+    let summaryText = 'Not yet scored';
+    if (summary) {
+      const parts = [];
+      if (summary.avg != null) parts.push(`avg ${summary.avg.toFixed(1)}/5`);
+      if (summary.buddingCount) parts.push(`🌱 ${summary.buddingCount}`);
+      if (summary.floweringCount) parts.push(`🌼 ${summary.floweringCount}`);
+      summaryText = `Latest ${shortDateFor(summary.latestWeekId)}` + (parts.length ? ': ' + parts.join(' · ') : '');
+    }
+
+    li.innerHTML = `<span class="field-name"></span><span class="field-meta"></span><span class="field-summary"></span>`;
     li.querySelector('.field-name').textContent = f.name;
-    li.querySelector('.field-meta').textContent = `${f.rows} × ${f.cols} grid · ${plants.length} plants`;
+    li.querySelector('.field-meta').textContent = `${f.rows} × ${f.cols} grid · ${plants.length} plant${plants.length === 1 ? '' : 's'}`;
+    li.querySelector('.field-summary').textContent = summaryText;
     li.onclick = () => openField(f);
     fieldList.appendChild(li);
   }
@@ -224,12 +267,12 @@ async function openField(field) {
   document.querySelectorAll('#mode-toggle button').forEach((b) => b.classList.toggle('active', b.dataset.mode === 'plant'));
 
   showScreen('field');
+  updateWeekLabel();
   resizeCanvas();
 
   await loadPlantsForField();
   await loadScoresForCurrentWeek();
   fitView();
-  updateWeekLabel();
   draw();
 }
 
@@ -242,7 +285,7 @@ async function loadPlantsForField() {
 async function loadScoresForCurrentWeek() {
   const scores = await idbGetAllByIndex('scores', 'byFieldWeek', [state.field.id, state.weekId]);
   state.scoreMap = new Map();
-  for (const s of scores) state.scoreMap.set(s.plantId, { score: s.score, note: s.note });
+  for (const s of scores) state.scoreMap.set(s.plantId, { score: s.score, note: s.note, stage: stageOf(s) });
 }
 
 function updateWeekLabel() {
@@ -266,13 +309,15 @@ function resizeCanvas() {
 }
 window.addEventListener('resize', resizeCanvas);
 
+const MIN_INITIAL_CELL_PX = 10; // never auto-fit below this, or gridlines/cells become invisible
+
 function fitView() {
   const rect = canvasWrap.getBoundingClientRect();
   if (!state.field || rect.width === 0) { state.view = { scale: 1, x: 0, y: 0 }; return; }
   const gridW = state.field.cols * BASE_CELL;
   const gridH = state.field.rows * BASE_CELL;
-  const scale = Math.min((rect.width - 24) / gridW, (rect.height - 24) / gridH, 3);
-  const clampedScale = Math.max(0.05, scale);
+  const fitScale = Math.min((rect.width - 24) / gridW, (rect.height - 24) / gridH, 3);
+  const clampedScale = Math.max(MIN_INITIAL_CELL_PX / BASE_CELL, fitScale);
   const cellSize = BASE_CELL * clampedScale;
   const x = (rect.width - state.field.cols * cellSize) / 2;
   const y = (rect.height - state.field.rows * cellSize) / 2;
@@ -308,11 +353,8 @@ function draw() {
       const px = x + col * cellSize;
       const py = y + row * cellSize;
 
-      let fill = null;
-      if (plantId) {
-        const sc = state.scoreMap.get(plantId);
-        fill = sc ? PALETTE.scores[sc.score] : PALETTE.unscored;
-      }
+      const sc = plantId ? state.scoreMap.get(plantId) : null;
+      const fill = plantId ? (sc && sc.score ? PALETTE.scores[sc.score] : PALETTE.unscored) : null;
       if (fill) {
         ctx.fillStyle = fill;
         ctx.fillRect(px + gap, py + gap, cellSize - gap * 2, cellSize - gap * 2);
@@ -321,6 +363,12 @@ function draw() {
         ctx.strokeStyle = PALETTE.gridline;
         ctx.lineWidth = 1;
         ctx.strokeRect(Math.round(px) + 0.5, Math.round(py) + 0.5, cellSize, cellSize);
+      }
+      if (sc && sc.stage && cellSize > 14) {
+        ctx.font = `${Math.floor(cellSize * 0.65)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(STAGE_ICON[sc.stage], px + cellSize / 2, py + cellSize / 2 + cellSize * 0.03);
       }
       if (plantId && plantId === state.selectedPlantId) {
         ctx.strokeStyle = PALETTE.textPrimary;
@@ -485,15 +533,49 @@ async function undoRemovePlant() {
 /* ---------- score sheet ---------- */
 
 const sheetScore = $('#sheet-score');
+const sheetPanel = document.querySelector('#sheet-score .sheet');
 const scoreSheetTitle = $('#score-sheet-title');
 const scorePrevWeek = $('#score-prev-week');
 const scoreNote = $('#score-note');
+const stageToggle = $('#stage-toggle');
+const stageButtons = stageToggle.querySelectorAll('.stage-btn');
 const scoreButtons = $('#score-buttons');
 const btnClearScore = $('#btn-clear-score');
+const btnPrevPlant = $('#btn-prev-plant');
 const btnAdvanceDir = $('#btn-advance-dir');
 const advanceDirIcon = $('#advance-dir-icon');
 
-let sheetCtx = null; // {plantId, row, col, selected}
+let sheetCtx = null; // {plantId, row, col, selected, stage}
+
+/* growth-stage tag: 'budding' | 'flowering' | null, mutually exclusive */
+function stageOf(record) {
+  if (!record) return null;
+  if (record.stage) return record.stage;
+  if (record.flowering) return 'flowering'; // back-compat with the old boolean field
+  return null;
+}
+const STAGE_ICON = { budding: '🌱', flowering: '🌼' };
+
+function updateStageButtons() {
+  stageButtons.forEach((b) => b.classList.toggle('active', b.dataset.stage === sheetCtx.stage));
+}
+
+stageToggle.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.stage-btn');
+  if (!btn || !sheetCtx) return;
+  const clicked = btn.dataset.stage;
+  sheetCtx.stage = sheetCtx.stage === clicked ? null : clicked;
+  updateStageButtons();
+  await saveStage();
+});
+
+async function saveStage() {
+  const record = buildScoreRecord();
+  await idbPut('scores', record);
+  state.scoreMap.set(sheetCtx.plantId, { score: record.score, note: record.note, stage: record.stage });
+  btnClearScore.classList.remove('hidden');
+  draw();
+}
 
 /* auto-advance to the next plant after saving a score */
 const ADVANCE_DIRS = ['right', 'down', 'left', 'up'];
@@ -525,26 +607,64 @@ function findNextPlant(row, col, dir) {
   return null;
 }
 
-async function openScoreSheet(plantId, row, col) {
+function centerOnCell(row, col) {
+  const rect = canvasWrap.getBoundingClientRect();
+  const cellSize = BASE_CELL * state.view.scale;
+
+  // If the score sheet is open, center the cell in the space still visible
+  // above it rather than the full canvas, so it isn't hidden under the sheet.
+  let visibleHeight = rect.height;
+  if (!sheetScore.classList.contains('hidden')) {
+    const sheetTop = sheetPanel.getBoundingClientRect().top;
+    const visible = sheetTop - rect.top;
+    if (visible > 0) visibleHeight = visible;
+  }
+
+  state.view.x = rect.width / 2 - (col + 0.5) * cellSize;
+  state.view.y = visibleHeight / 2 - (row + 0.5) * cellSize;
+}
+
+let sheetHistory = []; // stack of {plantId, row, col} visited before the current one
+
+function updatePrevButtonState() {
+  btnPrevPlant.disabled = sheetHistory.length === 0;
+}
+
+async function openScoreSheet(plantId, row, col, opts = {}) {
+  const { goingBack = false } = opts;
+  if (sheetCtx && !goingBack) {
+    sheetHistory.push({ plantId: sheetCtx.plantId, row: sheetCtx.row, col: sheetCtx.col });
+  }
+  updatePrevButtonState();
+
   const existing = state.scoreMap.get(plantId);
-  sheetCtx = { plantId, row, col, selected: existing ? existing.score : null };
+  sheetCtx = { plantId, row, col, selected: existing ? existing.score : null, stage: existing ? stageOf(existing) : null };
   state.selectedPlantId = plantId;
-  draw();
 
   scoreSheetTitle.textContent = `Plant (${row}, ${col})`;
   scoreNote.value = existing ? (existing.note || '') : '';
+  updateStageButtons();
   btnClearScore.classList.toggle('hidden', !existing);
   updateScoreButtonSelection();
 
   const prevWeekId = addWeeks(state.weekId, -1);
   const prevScoreRecord = await getScoreRecord(plantId, prevWeekId);
   if (prevScoreRecord) {
-    scorePrevWeek.textContent = `Last week: ${prevScoreRecord.score}/5${prevScoreRecord.note ? ' — ' + prevScoreRecord.note : ''}`;
+    const parts = [];
+    if (prevScoreRecord.score) parts.push(`${prevScoreRecord.score}/5`);
+    const prevStage = stageOf(prevScoreRecord);
+    if (prevStage) parts.push(`${STAGE_ICON[prevStage]} ${prevStage}`);
+    if (prevScoreRecord.note) parts.push(prevScoreRecord.note);
+    scorePrevWeek.textContent = parts.length ? `Last week: ${parts.join(' — ')}` : 'No data last week';
   } else {
     scorePrevWeek.textContent = 'No data last week';
   }
 
+  // Show the sheet before centering so its rendered height can be measured
+  // and the target cell can be centered in the space still visible above it.
   sheetScore.classList.remove('hidden');
+  centerOnCell(row, col);
+  draw();
 }
 
 function getScoreRecord(plantId, weekId) {
@@ -569,18 +689,23 @@ scoreButtons.addEventListener('click', async (e) => {
   await saveScore();
 });
 
-async function saveScore() {
-  const record = {
+function buildScoreRecord() {
+  return {
     id: `${sheetCtx.plantId}__${state.weekId}`,
     plantId: sheetCtx.plantId,
     fieldId: state.field.id,
     weekId: state.weekId,
     score: sheetCtx.selected,
     note: scoreNote.value.trim(),
+    stage: sheetCtx.stage,
     updatedAt: Date.now(),
   };
+}
+
+async function saveScore() {
+  const record = buildScoreRecord();
   await idbPut('scores', record);
-  state.scoreMap.set(sheetCtx.plantId, { score: record.score, note: record.note });
+  state.scoreMap.set(sheetCtx.plantId, { score: record.score, note: record.note, stage: record.stage });
 
   const next = findNextPlant(sheetCtx.row, sheetCtx.col, state.advanceDir);
   if (next) {
@@ -594,10 +719,19 @@ function closeScoreSheet() {
   sheetScore.classList.add('hidden');
   state.selectedPlantId = null;
   sheetCtx = null;
+  sheetHistory = [];
+  updatePrevButtonState();
   draw();
 }
 
 $('#btn-cancel-score').addEventListener('click', closeScoreSheet);
+
+$('#btn-prev-plant').addEventListener('click', async () => {
+  if (!sheetHistory.length) return;
+  const prev = sheetHistory.pop();
+  updatePrevButtonState();
+  await openScoreSheet(prev.plantId, prev.row, prev.col, { goingBack: true });
+});
 
 $('#btn-clear-score').addEventListener('click', async () => {
   if (!sheetCtx) return;
@@ -715,13 +849,13 @@ $('#menu-export-csv').addEventListener('click', async () => {
   menuPopover.classList.add('hidden');
   const plants = await idbGetAllByIndex('plants', 'byField', state.field.id);
   const plantById = new Map(plants.map((p) => [p.id, p]));
-  const allScores = await idbGetAll('scores');
-  const scores = allScores.filter((s) => plantById.has(s.plantId));
+  const scores = await idbGetAllByIndex('scores', 'byField', state.field.id);
   scores.sort((a, b) => a.weekId.localeCompare(b.weekId) || a.plantId.localeCompare(b.plantId));
-  const rows = [['field', 'row', 'col', 'week', 'score', 'note']];
+  const rows = [['field', 'row', 'col', 'week', 'score', 'stage', 'note']];
   for (const s of scores) {
     const p = plantById.get(s.plantId);
-    rows.push([state.field.name, p.row, p.col, s.weekId, s.score, (s.note || '').replace(/\n/g, ' ')]);
+    if (!p) continue;
+    rows.push([state.field.name, p.row, p.col, s.weekId, s.score ?? '', stageOf(s) ?? '', (s.note || '').replace(/\n/g, ' ')]);
   }
   const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\n');
   downloadFile(`${slugify(state.field.name)}-scores.csv`, csv, 'text/csv');
