@@ -946,7 +946,11 @@ async function init() {
   showScreen('fields');
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').catch((err) => {
+      console.warn('Offline caching unavailable (service worker failed to register):', err);
+    });
+  } else {
+    console.warn('Offline caching unavailable: service workers require HTTPS or localhost, not a plain-HTTP address like this one.');
   }
 }
 

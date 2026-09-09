@@ -139,15 +139,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 8px 8px;
   background: var(--surface-1);
   border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .segmented {
   display: inline-flex;
+  flex-shrink: 0;
   background: var(--gridline);
   border-radius: 10px;
   padding: 3px;
@@ -156,12 +159,13 @@ body {
 .segmented button {
   border: none;
   background: transparent;
-  padding: 8px 14px;
-  font-size: 14px;
+  padding: 8px 10px;
+  font-size: 13px;
   font-weight: 600;
   border-radius: 8px;
   color: var(--text-secondary);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .segmented button.active {
@@ -173,19 +177,25 @@ body {
 .week-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 14px;
+  flex-shrink: 0;
+  gap: 2px;
+  font-size: 13px;
   font-weight: 600;
+}
+
+.week-nav .btn-icon {
+  min-width: 36px;
+  min-height: 36px;
 }
 
 .week-label-wrap {
   position: relative;
-  min-width: 150px;
-  min-height: 44px;
+  min-height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .week-label-wrap #week-label {
