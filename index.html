@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Plant Health Tracker</title>
+<meta name="theme-color" content="#2a78d6" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body data-palette="#86b6ef,#5598e7,#2a78d6,#184f95,#0d366b" data-mode="light" data-ordinal>
+<div id="app">
+
+  <!-- FIELDS LIST SCREEN -->
+  <section id="screen-fields" class="screen">
+    <header class="topbar">
+      <h1>Plant Health Tracker</h1>
+      <button id="btn-new-field" class="btn-icon" aria-label="New field">+</button>
+    </header>
+    <ul id="field-list" class="field-list"></ul>
+    <p id="field-list-empty" class="empty-hint hidden">No fields yet. Tap + to create one.</p>
+  </section>
+
+  <!-- FIELD GRID SCREEN -->
+  <section id="screen-field" class="screen hidden">
+    <header class="topbar">
+      <button id="btn-back" class="btn-icon" aria-label="Back">‹</button>
+      <h1 id="field-title">Field</h1>
+      <button id="btn-menu" class="btn-icon" aria-label="Menu">⋮</button>
+    </header>
+
+    <div class="toolbar">
+      <div class="segmented" id="mode-toggle">
+        <button type="button" data-mode="plant" class="active">Plant</button>
+        <button type="button" data-mode="score">Score</button>
+      </div>
+      <div class="week-nav">
+        <button type="button" id="week-prev" class="btn-icon" aria-label="Previous week">‹</button>
+        <div class="week-label-wrap" id="week-label-wrap">
+          <span id="week-label">Week of —</span>
+          <input type="date" id="week-date-input" aria-label="Jump to week" tabindex="-1" />
+        </div>
+        <button type="button" id="week-next" class="btn-icon" aria-label="Next week">›</button>
+      </div>
+    </div>
+
+    <div id="canvas-wrap">
+      <canvas id="grid-canvas"></canvas>
+      <div id="empty-grid-hint" class="empty-hint hidden">Pinch to zoom, drag to pan.<br/>Switch to Plant mode and tap a cell to place a plant.</div>
+    </div>
+
+    <div class="legend" id="legend">
+      <span class="legend-item"><i class="swatch" style="background:var(--score-1)"></i>1</span>
+      <span class="legend-item"><i class="swatch" style="background:var(--score-2)"></i>2</span>
+      <span class="legend-item"><i class="swatch" style="background:var(--score-3)"></i>3</span>
+      <span class="legend-item"><i class="swatch" style="background:var(--score-4)"></i>4</span>
+      <span class="legend-item"><i class="swatch" style="background:var(--score-5)"></i>5</span>
+      <span class="legend-item"><i class="swatch" style="background:var(--unscored)"></i>No score</span>
+      <span class="legend-item"><i class="swatch swatch-empty"></i>No plant</span>
+    </div>
+  </section>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- NEW FIELD MODAL -->
+<div id="modal-new-field" class="overlay hidden">
+  <div class="modal">
+    <h2>New Field</h2>
+    <label>Field name
+      <input type="text" id="field-name" placeholder="e.g. North Greenhouse" maxlength="60" />
+    </label>
+    <div class="row-2">
+      <label>Rows
+        <input type="number" id="field-rows" min="1" max="500" value="20" />
+      </label>
+      <label>Columns
+        <input type="number" id="field-cols" min="1" max="500" value="20" />
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="btn-cancel-field" class="btn-secondary">Cancel</button>
+      <button type="button" id="btn-create-field" class="btn-primary">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- MENU POPOVER -->
+<div id="menu-popover" class="overlay hidden">
+  <div class="popover">
+    <button type="button" id="menu-export-json">Export field data (JSON)</button>
+    <button type="button" id="menu-export-csv">Export scores (CSV)</button>
+    <button type="button" id="menu-import-json">Import JSON (replace all data)</button>
+    <button type="button" id="menu-rename-field">Rename field</button>
+    <button type="button" id="menu-delete-field" class="danger">Delete field</button>
+    <button type="button" id="menu-close" class="btn-secondary">Close</button>
+  </div>
+</div>
+
+<!-- SCORE SHEET -->
+<div id="sheet-score" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header-row">
+      <h2 id="score-sheet-title">Plant (0, 0)</h2>
+      <button type="button" id="btn-advance-dir" class="btn-advance-dir" aria-label="Auto-advance direction after saving">
+        <span id="advance-dir-icon">→</span> Next
+      </button>
+    </div>
+    <p id="score-prev-week" class="muted"></p>
+    <div class="score-buttons" id="score-buttons">
+      <button type="button" data-score="1" style="--c:var(--score-1)">1</button>
+      <button type="button" data-score="2" style="--c:var(--score-2)">2</button>
+      <button type="button" data-score="3" style="--c:var(--score-3)">3</button>
+      <button type="button" data-score="4" style="--c:var(--score-4)">4</button>
+      <button type="button" data-score="5" style="--c:var(--score-5)">5</button>
+    </div>
+    <label>Notes
+      <textarea id="score-note" rows="3" placeholder="Optional notes..."></textarea>
+    </label>
+    <div class="modal-actions">
+      <button type="button" id="btn-clear-score" class="btn-secondary hidden">Clear</button>
+      <button type="button" id="btn-cancel-score" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="import-file" accept="application/json" class="hidden" />
+
+<script src="app.js"></script>
+</body>
+</html>
