@@ -478,6 +478,25 @@ body {
   color: #fff;
 }
 
+.tag-btn {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--baseline);
+  background: var(--surface-1);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+.tag-btn.active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 .score-buttons {
   display: flex;
   gap: 8px;

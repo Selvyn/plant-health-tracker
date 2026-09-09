@@ -218,7 +218,8 @@ function summarizeFieldScores(scores) {
   const avg = scored.length ? scored.reduce((sum, s) => sum + s.score, 0) / scored.length : null;
   const buddingCount = latest.filter((s) => stageOf(s) === 'budding').length;
   const floweringCount = latest.filter((s) => stageOf(s) === 'flowering').length;
-  return { latestWeekId, avg, scoredCount: scored.length, buddingCount, floweringCount };
+  const infectedCount = latest.filter((s) => s.infected).length;
+  return { latestWeekId, avg, scoredCount: scored.length, buddingCount, floweringCount, infectedCount };
 }
 
 async function renderFieldList() {
@@ -238,6 +239,7 @@ async function renderFieldList() {
       if (summary.avg != null) parts.push(`avg ${summary.avg.toFixed(1)}/5`);
       if (summary.buddingCount) parts.push(`🌱 ${summary.buddingCount}`);
       if (summary.floweringCount) parts.push(`🌼 ${summary.floweringCount}`);
+      if (summary.infectedCount) parts.push(`🐜 ${summary.infectedCount}`);
       summaryText = `Latest ${shortDateFor(summary.latestWeekId)}` + (parts.length ? ': ' + parts.join(' · ') : '');
     }
 
@@ -285,7 +287,7 @@ async function loadPlantsForField() {
 async function loadScoresForCurrentWeek() {
   const scores = await idbGetAllByIndex('scores', 'byFieldWeek', [state.field.id, state.weekId]);
   state.scoreMap = new Map();
-  for (const s of scores) state.scoreMap.set(s.plantId, { score: s.score, note: s.note, stage: stageOf(s) });
+  for (const s of scores) state.scoreMap.set(s.plantId, { score: s.score, note: s.note, stage: stageOf(s), infected: !!s.infected });
 }
 
 function updateWeekLabel() {
@@ -369,6 +371,13 @@ function draw() {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(STAGE_ICON[sc.stage], px + cellSize / 2, py + cellSize / 2 + cellSize * 0.03);
+      }
+      if (sc && sc.infected && cellSize > 14) {
+        // always a small corner badge, regardless of whether a stage icon is also present
+        ctx.font = `${Math.floor(cellSize * 0.4)}px sans-serif`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText(INFECTED_ICON, px + cellSize - 1, py + 1);
       }
       if (plantId && plantId === state.selectedPlantId) {
         ctx.strokeStyle = PALETTE.textPrimary;
@@ -539,13 +548,14 @@ const scorePrevWeek = $('#score-prev-week');
 const scoreNote = $('#score-note');
 const stageToggle = $('#stage-toggle');
 const stageButtons = stageToggle.querySelectorAll('.stage-btn');
+const btnInfected = $('#btn-infected');
 const scoreButtons = $('#score-buttons');
 const btnClearScore = $('#btn-clear-score');
 const btnPrevPlant = $('#btn-prev-plant');
 const btnAdvanceDir = $('#btn-advance-dir');
 const advanceDirIcon = $('#advance-dir-icon');
 
-let sheetCtx = null; // {plantId, row, col, selected, stage}
+let sheetCtx = null; // {plantId, row, col, selected, stage, infected}
 
 /* growth-stage tag: 'budding' | 'flowering' | null, mutually exclusive */
 function stageOf(record) {
@@ -555,9 +565,11 @@ function stageOf(record) {
   return null;
 }
 const STAGE_ICON = { budding: '🌱', flowering: '🌼' };
+const INFECTED_ICON = '🐜';
 
 function updateStageButtons() {
   stageButtons.forEach((b) => b.classList.toggle('active', b.dataset.stage === sheetCtx.stage));
+  btnInfected.classList.toggle('active', !!sheetCtx.infected);
 }
 
 stageToggle.addEventListener('click', async (e) => {
@@ -566,13 +578,20 @@ stageToggle.addEventListener('click', async (e) => {
   const clicked = btn.dataset.stage;
   sheetCtx.stage = sheetCtx.stage === clicked ? null : clicked;
   updateStageButtons();
-  await saveStage();
+  await saveTags();
 });
 
-async function saveStage() {
+btnInfected.addEventListener('click', async () => {
+  if (!sheetCtx) return;
+  sheetCtx.infected = !sheetCtx.infected;
+  updateStageButtons();
+  await saveTags();
+});
+
+async function saveTags() {
   const record = buildScoreRecord();
   await idbPut('scores', record);
-  state.scoreMap.set(sheetCtx.plantId, { score: record.score, note: record.note, stage: record.stage });
+  state.scoreMap.set(sheetCtx.plantId, { score: record.score, note: record.note, stage: record.stage, infected: record.infected });
   btnClearScore.classList.remove('hidden');
   draw();
 }
@@ -638,7 +657,7 @@ async function openScoreSheet(plantId, row, col, opts = {}) {
   updatePrevButtonState();
 
   const existing = state.scoreMap.get(plantId);
-  sheetCtx = { plantId, row, col, selected: existing ? existing.score : null, stage: existing ? stageOf(existing) : null };
+  sheetCtx = { plantId, row, col, selected: existing ? existing.score : null, stage: existing ? stageOf(existing) : null, infected: existing ? !!existing.infected : false };
   state.selectedPlantId = plantId;
 
   scoreSheetTitle.textContent = `Plant (${row}, ${col})`;
@@ -654,6 +673,7 @@ async function openScoreSheet(plantId, row, col, opts = {}) {
     if (prevScoreRecord.score) parts.push(`${prevScoreRecord.score}/5`);
     const prevStage = stageOf(prevScoreRecord);
     if (prevStage) parts.push(`${STAGE_ICON[prevStage]} ${prevStage}`);
+    if (prevScoreRecord.infected) parts.push(`${INFECTED_ICON} infected`);
     if (prevScoreRecord.note) parts.push(prevScoreRecord.note);
     scorePrevWeek.textContent = parts.length ? `Last week: ${parts.join(' — ')}` : 'No data last week';
   } else {
@@ -698,6 +718,7 @@ function buildScoreRecord() {
     score: sheetCtx.selected,
     note: scoreNote.value.trim(),
     stage: sheetCtx.stage,
+    infected: sheetCtx.infected,
     updatedAt: Date.now(),
   };
 }
@@ -705,7 +726,7 @@ function buildScoreRecord() {
 async function saveScore() {
   const record = buildScoreRecord();
   await idbPut('scores', record);
-  state.scoreMap.set(sheetCtx.plantId, { score: record.score, note: record.note, stage: record.stage });
+  state.scoreMap.set(sheetCtx.plantId, { score: record.score, note: record.note, stage: record.stage, infected: record.infected });
 
   const next = findNextPlant(sheetCtx.row, sheetCtx.col, state.advanceDir);
   if (next) {
@@ -851,11 +872,11 @@ $('#menu-export-csv').addEventListener('click', async () => {
   const plantById = new Map(plants.map((p) => [p.id, p]));
   const scores = await idbGetAllByIndex('scores', 'byField', state.field.id);
   scores.sort((a, b) => a.weekId.localeCompare(b.weekId) || a.plantId.localeCompare(b.plantId));
-  const rows = [['field', 'row', 'col', 'week', 'score', 'stage', 'note']];
+  const rows = [['field', 'row', 'col', 'week', 'score', 'stage', 'infected', 'note']];
   for (const s of scores) {
     const p = plantById.get(s.plantId);
     if (!p) continue;
-    rows.push([state.field.name, p.row, p.col, s.weekId, s.score ?? '', stageOf(s) ?? '', (s.note || '').replace(/\n/g, ' ')]);
+    rows.push([state.field.name, p.row, p.col, s.weekId, s.score ?? '', stageOf(s) ?? '', s.infected ? 'yes' : '', (s.note || '').replace(/\n/g, ' ')]);
   }
   const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\n');
   downloadFile(`${slugify(state.field.name)}-scores.csv`, csv, 'text/csv');
