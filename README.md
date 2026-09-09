@@ -27,11 +27,16 @@ Pages) and open that URL on the phone instead.
 - **+** on the fields screen creates a new field (name + grid size).
 - **Plant mode**: tap a cell to place a plant there; tap an existing plant to
   remove it (with a 4s Undo toast).
-- **Score mode**: tap a plant to open the scoring sheet — pick 1-5 and
-  optionally add a note for the currently selected week. The previous week's
-  score/note is shown for reference.
-- The **‹ Week of … ›** control moves between weeks; the grid recolors as a
-  heatmap of that week's scores (grey = planted but not yet scored that week).
+- **Score mode**: tap a plant to open the scoring sheet — optionally type a
+  note, then tap 1-5 to save instantly (no separate Save step). The previous
+  week's score/note is shown for reference. After saving it automatically
+  jumps to the next plant in the direction shown by the **→ Next** button in
+  the sheet header — tap that button to cycle the direction (right / down /
+  left / up) for fast row-by-row scoring.
+- The **‹ Week of … ›** control moves between weeks one at a time; tap the
+  date label itself to open a date picker and jump straight to any week. The
+  grid recolors as a heatmap of that week's scores (grey = planted but not
+  yet scored that week).
 - Pinch to zoom / drag to pan — built for grids with thousands of cells.
 - **⋮ menu** on a field: export JSON (full backup) or CSV (scores, for
   spreadsheet analysis), import JSON (replaces all on-device data), rename or
